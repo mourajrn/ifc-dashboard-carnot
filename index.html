@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard IFC</title>
+<style>
+  :root{
+    --bg:#f4f5f7; --panel:#fff; --ink:#1b1f24; --muted:#6b7280; --line:#e3e6ea; --accent:#1f6feb;
+    --c-col:#3b82f6; --c-beam:#f59e0b; --c-slab:#10b981; --c-other:#8b5cf6;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0f1317; --panel:#171c22; --ink:#e8ebef; --muted:#97a0ab; --line:#262d36; --accent:#58a6ff; }
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,Segoe UI,Roboto,sans-serif}
+  header{display:flex;align-items:center;gap:12px;padding:12px 20px;background:var(--panel);border-bottom:1px solid var(--line)}
+  header h1{font-size:16px;margin:0;font-weight:600}
+  header .sub{color:var(--muted);font-size:12px}
+  header .spacer{flex:1}
+  button,.btn{background:var(--accent);color:#fff;border:0;border-radius:6px;padding:7px 12px;font:inherit;cursor:pointer}
+  button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+  main{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:12px;padding:12px;height:calc(100% - 55px)}
+  .col{display:flex;flex-direction:column;gap:12px;min-height:0;min-width:0}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+  .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+  .kpi .v{font-size:22px;font-weight:650;font-variant-numeric:tabular-nums}
+  .kpi .l{font-size:12px;color:var(--muted)}
+  #viewer{position:relative;flex:1;min-height:320px;padding:0;overflow:hidden}
+  #viewer canvas{display:block;width:100%;height:100%}
+  #overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:var(--panel);text-align:center;padding:20px}
+  #overlay.hide{display:none}
+  .bar{height:6px;width:240px;background:var(--line);border-radius:3px;overflow:hidden}
+  .bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+  .tools{position:absolute;top:8px;left:8px;display:flex;gap:6px;flex-wrap:wrap}
+  .tools button{padding:5px 9px;font-size:12px}
+  .charts{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:0 0 8px;font-weight:600}
+  .row{display:flex;align-items:center;gap:8px;margin:5px 0;font-size:13px}
+  .row .n{width:110px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row .t{flex:1;height:10px;background:var(--line);border-radius:5px;overflow:hidden}
+  .row .t i{display:block;height:100%;border-radius:5px}
+  .row .c{width:48px;text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
+  .row.click{cursor:pointer}
+  .row.click:hover .n{color:var(--accent)}
+  .row.off{opacity:.4}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  td{padding:4px 0;border-bottom:1px solid var(--line);vertical-align:top}
+  td:first-child{color:var(--muted);width:45%;padding-right:8px}
+  .pset{margin:10px 0 4px;font-weight:600;font-size:12px}
+  #side{overflow:auto}
+  .sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px}
+  @media (max-width:980px){
+    main{grid-template-columns:1fr;height:auto}
+    .kpis{grid-template-columns:repeat(2,1fr)}
+    #viewer{height:60vh;flex:none}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Dashboard IFC</h1>
+  <span class="sub" id="fileName">nenhum arquivo</span>
+  <span class="spacer"></span>
+  <label class="btn" for="file">Abrir IFC…</label>
+  <input id="file" type="file" accept=".ifc" hidden>
+</header>
+
+<main>
+  <div class="col">
+    <section class="kpis">
+      <div class="card kpi"><div class="v" id="kElems">–</div><div class="l">Elementos</div></div>
+      <div class="card kpi"><div class="v" id="kVol">–</div><div class="l">Volume total (m³)</div></div>
+      <div class="card kpi"><div class="v" id="kStoreys">–</div><div class="l">Pavimentos</div></div>
+      <div class="card kpi"><div class="v" id="kTypes">–</div><div class="l">Tipos de seção</div></div>
+      <div class="card kpi"><div class="v" id="kSchema">–</div><div class="l">Schema</div></div>
+    </section>
+    <section class="card" id="viewer">
+      <div class="tools">
+        <button class="ghost" id="bFit">Enquadrar</button>
+        <button class="ghost" id="bIso">Isolar seleção</button>
+        <button class="ghost" id="bAll">Mostrar tudo</button>
+        <button class="ghost" id="bWire">Wireframe</button>
+      </div>
+      <div id="overlay">
+        <div id="ovMsg">Carregando <b>Estrutura.ifc</b>…</div>
+        <div class="bar"><i id="ovBar"></i></div>
+        <div class="sub" id="ovHint" style="color:var(--muted);font-size:12px;max-width:420px"></div>
+      </div>
+    </section>
+  </div>
+
+  <aside class="col" id="side">
+        <div class="card"><h2>Volume por pavimento (m³) — clique para ocultar</h2><div id="byStorey"></div></div>
+    <div class="card"><h2>Volume por categoria (m³) — clique para ocultar</h2><div id="volType"></div></div>
+    <div class="card"><h2>Elemento selecionado</h2><div id="props" style="color:var(--muted)">Clique em um elemento no modelo.</div></div>
+  </aside>
+</main>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import * as WebIFC from "https://cdn.jsdelivr.net/npm/web-ifc@0.0.57/web-ifc-api.js";
+
+const $ = id => document.getElementById(id);
+const CATS = {
+  [WebIFC.IFCCOLUMN]:  { key:"Pilares", color:"#3b82f6" },
+  [WebIFC.IFCBEAM]:    { key:"Vigas",   color:"#f59e0b" },
+  [WebIFC.IFCSLAB]:    { key:"Lajes / Sapatas", color:"#10b981" },
+  [WebIFC.IFCWALL]:    { key:"Paredes", color:"#ef4444" },
+  [WebIFC.IFCWALLSTANDARDCASE]: { key:"Paredes", color:"#ef4444" },
+  [WebIFC.IFCMEMBER]:  { key:"Membros", color:"#8b5cf6" },
+  [WebIFC.IFCFOOTING]: { key:"Fundações", color:"#14b8a6" },
+  [WebIFC.IFCBUILDINGELEMENTPROXY]: { key:"Genéricos", color:"#9ca3af" },
+};
+const fmt = (n, d=0) => n.toLocaleString("pt-BR", {minimumFractionDigits:d, maximumFractionDigits:d});
+const decode = s => (s ?? "");
+
+// ---------- three.js ----------
+const viewer = $("viewer");
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+viewer.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1e7);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x667788, 1.1));
+const sun = new THREE.DirectionalLight(0xffffff, 1.2); sun.position.set(1, 2, 1.5); scene.add(sun);
+const group = new THREE.Group(); scene.add(group);
+
+function applyTheme(){
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  scene.background = new THREE.Color(dark ? 0x10151a : 0xeceff3);
+}
+applyTheme(); matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
+
+function resize(){
+  const w = viewer.clientWidth, h = viewer.clientHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(viewer); resize();
+(function loop(){ requestAnimationFrame(loop); controls.update(); renderer.render(scene, camera); })();
+
+// ---------- estado ----------
+let ifc, modelID, elements = new Map(); // expressID -> {mesh, cat, name, storey, volume, type}
+const hiddenStoreys = new Set();
+let selected = null, hiddenCats = new Set(), isolated = false;
+
+function fit(objs){
+  const box = new THREE.Box3();
+  (objs || [group]).forEach(o => box.expandByObject(o));
+  if (box.isEmpty()) return;
+  const c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3());
+  const r = Math.max(s.x, s.y, s.z) * 1.1 || 1;
+  camera.near = r / 1000; camera.far = r * 100; camera.updateProjectionMatrix();
+  camera.position.set(c.x + r, c.y + r * 0.8, c.z + r);
+  controls.target.copy(c); controls.update();
+}
+
+// ---------- carregamento ----------
+function progress(p, msg){ $("ovBar").style.width = p + "%"; if (msg) $("ovMsg").innerHTML = msg; }
+
+async function initIfc(){
+  if (ifc) return;
+  ifc = new WebIFC.IfcAPI();
+  ifc.SetWasmPath("https://cdn.jsdelivr.net/npm/web-ifc@0.0.57/");
+  await ifc.Init();
+}
+
+async function loadBuffer(buf, name){
+  $("overlay").classList.remove("hide");
+  $("ovHint").textContent = "";
+  $("fileName").textContent = name;
+  progress(5, "Iniciando motor IFC…");
+  await initIfc();
+  if (modelID !== undefined) { ifc.CloseModel(modelID); }
+  group.clear(); elements.clear(); selected = null; hiddenCats.clear(); hiddenStoreys.clear();
+
+  progress(15, "Lendo modelo…");
+  await new Promise(r => setTimeout(r));
+  modelID = ifc.OpenModel(new Uint8Array(buf), { COORDINATE_TO_ORIGIN:true });
+  $("kSchema").textContent = ifc.GetModelSchema?.(modelID) ?? "IFC";
+
+  // pavimentos e relações espaciais
+  progress(30, "Mapeando pavimentos…");
+  const storeyOf = new Map(), storeyNames = new Map();
+  const sIds = ifc.GetLineIDsWithType(modelID, WebIFC.IFCBUILDINGSTOREY);
+  for (let i = 0; i < sIds.size(); i++){
+    const l = ifc.GetLine(modelID, sIds.get(i));
+    storeyNames.set(l.expressID, { name: decode(l.Name?.value) || "Sem nome", elev: l.Elevation?.value ?? 0 });
+  }
+  const rels = ifc.GetLineIDsWithType(modelID, WebIFC.IFCRELCONTAINEDINSPATIALSTRUCTURE);
+  for (let i = 0; i < rels.size(); i++){
+    const r = ifc.GetLine(modelID, rels.get(i));
+    const st = r.RelatingStructure?.value;
+    (r.RelatedElements || []).forEach(e => storeyOf.set(e.value, st));
+  }
+
+  // metadados dos elementos de interesse
+  progress(40, "Lendo elementos…");
+  for (const typeStr of Object.keys(CATS)){
+    const type = Number(typeStr);
+    const ids = ifc.GetLineIDsWithType(modelID, type);
+    for (let i = 0; i < ids.size(); i++){
+      const id = ids.get(i);
+      const l = ifc.GetLine(modelID, id);
+      const nm = decode(l.Name?.value), tn = decode(l.ObjectType?.value) || nm;
+      let cat = CATS[type].key, color = CATS[type].color;
+      if (type === WebIFC.IFCSLAB){
+        const sapata = /sapata/i.test(nm + tn) || l.PredefinedType?.value === "BASESLAB";
+        cat = sapata ? "Sapatas" : "Lajes";
+        color = sapata ? "#10b981" : "#06b6d4";
+      }
+      elements.set(id, {
+        id, cat, color,
+        name: nm, typeName: tn,
+        storey: storeyNames.get(storeyOf.get(id))?.name ?? "Sem pavimento",
+        elev: storeyNames.get(storeyOf.get(id))?.elev ?? -1e9,
+        volume: 0, mesh: null,
+      });
+    }
+  }
+
+  // geometria
+  progress(50, "Gerando geometria…");
+  await new Promise(r => setTimeout(r));
+  const mats = {};
+  const matFor = c => mats[c] ??= new THREE.MeshLambertMaterial({ color:c, side:THREE.DoubleSide });
+  ifc.StreamAllMeshes(modelID, fm => {
+    const el = elements.get(fm.expressID);
+    if (!el) return;
+    const g = new THREE.Group();
+    for (let i = 0; i < fm.geometries.size(); i++){
+      const pg = fm.geometries.get(i);
+      const geo = ifc.GetGeometry(modelID, pg.geometryExpressID);
+      const verts = ifc.GetVertexArray(geo.GetVertexData(), geo.GetVertexDataSize());
+      const idx = ifc.GetIndexArray(geo.GetIndexData(), geo.GetIndexDataSize());
+      const pos = new Float32Array(verts.length / 2), nor = new Float32Array(verts.length / 2);
+      for (let k = 0, j = 0; k < verts.length; k += 6, j += 3){
+        pos[j]=verts[k]; pos[j+1]=verts[k+1]; pos[j+2]=verts[k+2];
+        nor[j]=verts[k+3]; nor[j+1]=verts[k+4]; nor[j+2]=verts[k+5];
+      }
+      const bg = new THREE.BufferGeometry();
+      bg.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      bg.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
+      bg.setIndex(new THREE.BufferAttribute(idx, 1));
+      const m = new THREE.Mesh(bg, matFor(el.color));
+      m.applyMatrix4(new THREE.Matrix4().fromArray(pg.flatTransformation));
+      g.add(m);
+      geo.delete?.();
+    }
+    g.userData.id = el.id;
+    el.mesh = g; group.add(g);
+  });
+  group.updateMatrixWorld(true);
+
+  // quantitativos (volume) via property sets
+  progress(75, "Calculando quantitativos…");
+  let n = 0;
+  for (const el of elements.values()){
+    try{
+      const psets = await ifc.properties.getPropertySets(modelID, el.id, true);
+      for (const ps of psets){
+        for (const p of ps.HasProperties || []){
+          if (/^volume$/i.test(decode(p.Name?.value)) && typeof p.NominalValue?.value === "number"){
+            el.volume = p.NominalValue.value;
+          }
+        }
+      }
+    }catch(e){}
+    if (++n % 40 === 0){ progress(75 + 20 * n / elements.size); await new Promise(r => setTimeout(r)); }
+  }
+  // remove elementos sem geometria
+  for (const [id, el] of elements) if (!el.mesh) elements.delete(id);
+
+  render();
+  fit();
+  $("overlay").classList.add("hide");
+}
+
+// ---------- dashboard ----------
+function bars(el, rows, opts = {}){
+  const max = Math.max(...rows.map(r => r.value), 1);
+  el.innerHTML = rows.map(r => `
+    <div class="row ${opts.click ? "click" : ""} ${r.off ? "off" : ""}" data-k="${r.name}">
+      <span class="n" title="${r.name}"><span class="sw" style="background:${r.color}"></span>${r.name}</span>
+      <span class="t"><i style="width:${r.value / max * 100}%;background:${r.color}"></i></span>
+      <span class="c">${opts.dec ? fmt(r.value, opts.dec) : r.value}</span>
+    </div>`).join("");
+}
+
+function render(){
+  const all = [...elements.values()];
+  const byCat = {}, byStorey = {}, volCat = {}, types = new Set();
+  const colorOf = {};
+  all.forEach(e => {
+    colorOf[e.cat] = e.color;
+    byCat[e.cat] = (byCat[e.cat] || 0) + 1;
+    byStorey[e.storey] = (byStorey[e.storey] || 0) + e.volume;
+    volCat[e.cat] = (volCat[e.cat] || 0) + e.volume;
+    types.add(e.typeName);
+  });
+  $("kElems").textContent = fmt(all.length);
+  $("kVol").textContent = fmt(all.reduce((s, e) => s + e.volume, 0), 2);
+  $("kStoreys").textContent = Object.keys(byStorey).length;
+  $("kTypes").textContent = types.size;
+
+  const elevOf = {}; all.forEach(e => elevOf[e.storey] = e.elev);
+  bars($("byStorey"), Object.entries(byStorey).sort((a,b) => elevOf[b[0]] - elevOf[a[0]]).map(([name, value]) =>
+    ({ name, value, color: "var(--accent)", off: hiddenStoreys.has(name) })), { click:true, dec:2 });
+  bars($("volType"), Object.entries(volCat).map(([name, value]) =>
+    ({ name, value, color: colorOf[name], off: hiddenCats.has(name) })), { click:true, dec:2 });
+
+  $("byStorey").querySelectorAll(".row").forEach(r => r.onclick = () => {
+    const k = r.dataset.k;
+    hiddenStoreys.has(k) ? hiddenStoreys.delete(k) : hiddenStoreys.add(k);
+    applyVisibility(); render();
+  });
+  $("volType").querySelectorAll(".row").forEach(r => r.onclick = () => {
+    const k = r.dataset.k;
+    hiddenCats.has(k) ? hiddenCats.delete(k) : hiddenCats.add(k);
+    applyVisibility(); render();
+  });
+}
+
+function applyVisibility(){
+  elements.forEach(e => {
+    e.mesh.visible = !hiddenCats.has(e.cat) && !hiddenStoreys.has(e.storey) && (!isolated || e === selected);
+  });
+}
+
+// ---------- seleção ----------
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+let down = null;
+renderer.domElement.addEventListener("pointerdown", e => down = [e.clientX, e.clientY]);
+renderer.domElement.addEventListener("pointerup", e => {
+  if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 4) return;
+  const r = renderer.domElement.getBoundingClientRect();
+  ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const hits = ray.intersectObjects(group.children.filter(c => c.visible), true);
+  select(hits.length ? elements.get(hits[0].object.parent.userData.id) : null);
+});
+
+const HL = new THREE.Color("#ef4444");
+function select(el){
+  if (selected){
+    selected.mesh.traverse(o => { if (o.isMesh) o.material = o.userData.orig ?? o.material; });
+  }
+  selected = el;
+  if (el){
+    el.mesh.traverse(o => {
+      if (!o.isMesh) return;
+      o.userData.orig ??= o.material;
+      o.material = new THREE.MeshLambertMaterial({ color: HL, side: THREE.DoubleSide });
+    });
+  }
+  showProps(el);
+}
+
+async function showProps(el){
+  const box = $("props");
+  if (!el){ box.style.color = "var(--muted)"; box.textContent = "Clique em um elemento no modelo."; return; }
+  box.style.color = "";
+  let html = `<table>
+    <tr><td>Nome</td><td>${el.name}</td></tr>
+    <tr><td>Categoria</td><td>${el.cat}</td></tr>
+    <tr><td>Pavimento</td><td>${el.storey}</td></tr>
+    <tr><td>Volume</td><td>${fmt(el.volume, 3)} m³</td></tr>
+    <tr><td>Express ID</td><td>#${el.id}</td></tr></table>`;
+  try{
+    const psets = await ifc.properties.getPropertySets(modelID, el.id, true);
+    for (const ps of psets){
+      const rows = (ps.HasProperties || [])
+        .filter(p => p.NominalValue)
+        .map(p => `<tr><td>${decode(p.Name?.value)}</td><td>${decode(String(p.NominalValue.value))}</td></tr>`).join("");
+      if (rows) html += `<div class="pset">${decode(ps.Name?.value)}</div><table>${rows}</table>`;
+    }
+  }catch(e){}
+  if (selected === el) box.innerHTML = html;
+}
+
+// ---------- ferramentas ----------
+$("bFit").onclick = () => fit(selected ? [selected.mesh] : null);
+$("bIso").onclick = () => { if (!selected) return; isolated = true; applyVisibility(); fit([selected.mesh]); };
+$("bAll").onclick = () => { isolated = false; hiddenCats.clear(); hiddenStoreys.clear(); applyVisibility(); render(); fit(); };
+let wire = false;
+$("bWire").onclick = () => {
+  wire = !wire;
+  group.traverse(o => { if (o.isMesh) { o.material.wireframe = wire; } });
+};
+
+// ---------- entrada de arquivo ----------
+$("file").addEventListener("change", async e => {
+  const f = e.target.files[0]; if (!f) return;
+  loadBuffer(await f.arrayBuffer(), f.name).catch(fail);
+});
+addEventListener("dragover", e => e.preventDefault());
+addEventListener("drop", async e => {
+  e.preventDefault();
+  const f = e.dataTransfer.files[0]; if (!f) return;
+  loadBuffer(await f.arrayBuffer(), f.name).catch(fail);
+});
+
+function fail(err){
+  console.error(err);
+  $("ovMsg").innerHTML = "Erro ao carregar o IFC.";
+  $("ovHint").textContent = String(err?.message || err);
+}
+
+// carga automática do exemplo (precisa de servidor HTTP; em file:// use "Abrir IFC…")
+(async () => {
+  try{
+    const res = await fetch("Estrutura.ifc");
+    if (!res.ok) throw new Error(res.status);
+    await loadBuffer(await res.arrayBuffer(), "Estrutura.ifc");
+  }catch(e){
+    console.error("IFCERR", e);
+    $("ovMsg").innerHTML = "Arraste um arquivo <b>.ifc</b> aqui ou clique em <b>Abrir IFC…</b>";
+    $("ovBar").parentElement.style.display = "none";
+    $("ovHint").textContent = "Para carregar Estrutura.ifc automaticamente, sirva a pasta via HTTP (ex.: python -m http.server) e abra http://localhost:8000.";
+  }
+})();
+</script>
+</body>
+</html>
